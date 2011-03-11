@@ -42,6 +42,7 @@ module Buildr
   module ActsAsArtifact
 
     ARTIFACT_ATTRIBUTES = [:group, :id, :type, :classifier, :version]
+    MAVEN_METADATA = "maven_metadata.xml"
 
     class << self
     private
@@ -81,6 +82,11 @@ module Buildr
 
     def snapshot?
       version =~ /-SNAPSHOT$/
+    end
+
+    def timestamp_version
+      return version unless unique_version?
+      Time.now.strftime("%Y%m%d.%H%M%S")
     end
 
     # :call-seq:
@@ -156,6 +162,27 @@ module Buildr
         xml.classifier    classifier if classifier
       end
     end
+	
+    # :call-seq:
+    #   maven_metadata_xml => string
+    #
+    # Creates Maven Metadata XML content for this artifact.
+    def maven_metadata_xml
+      xml = Builder::XmlMarkup.new(:indent=>2)
+      xml.instruct!
+      xml.metadata do
+        xml.groupId       group
+        xml.artifactId    id
+        xml.version       version
+        xml.versioning do
+          xml.snapshot do
+            xml.timestamp timestamp_version
+            xml.buildNumber 1
+          end
+          xml.lastupdated Time.now.strftime("%Y%m%d%H%M%S")
+        end
+      end
+    end
 
     def install
       invoke
@@ -204,7 +231,7 @@ module Buildr
       uri.user = upload_to[:username] if upload_to[:username]
       uri.password = upload_to[:password] if upload_to[:password]
 
-      path = group.gsub('.', '/') + "/#{id}/#{version}/#{File.basename(name)}"
+      path = group.gsub('.', '/') + "/#{id}/#{version}/#{upload_name}"
 
       unless task = Buildr.application.lookup(uri+path)
         deps = [self]
@@ -214,6 +241,10 @@ module Buildr
           # Upload artifact relative to base URL, need to create path before uploading.
           info "Deploying #{to_spec}"
           URI.upload uri + path, name, :permissions=>upload_to[:permissions]
+          if unique_version? and pom != self
+            maven_metadata = group.gsub('.', '/') + "/#{id}/#{version}/#{MAVEN_METADATA}"
+            URI.upload uri + maven_metadata, MAVEN_METADATA, :permissions=>upload_to[:permissions]
+          end
         end
       end
       task
@@ -232,6 +263,14 @@ module Buildr
       group.gsub('.', '/')
     end
 
+    def upload_name
+      return File.basename(name) unless unique_version?
+      return File.basename(name).gsub(/SNAPSHOT/, "#{timestamp_version}-1")
+    end
+
+    def unique_version?
+      snapshot? and Buildr.application.options.unique_version
+    end
   end
 
 
@@ -392,6 +431,7 @@ module Buildr
       unless @content
         enhance do
           write name, @content
+          write MAVEN_METADATA, maven_metadata_xml if unique_version?
         end
 
         class << self

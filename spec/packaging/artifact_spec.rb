@@ -838,6 +838,26 @@ describe ActsAsArtifact, '#upload' do
     lambda { artifact.upload }.should raise_error(Exception, /where to upload/)
   end
 
+  it 'should upload SNAPSHOT with timestamped unique version and maven metadata' do
+    artifact = artifact('com.example:library:jar:2.0-SNAPSHOT')
+    # Prevent artifact from downloading anything.
+    write repositories.locate(artifact)
+    write repositories.locate(artifact.pom)
+
+    Buildr.application.options.unique_version = true
+
+    time = Time.gm(2011,"mar",11,14,02,36,123)
+    Time.stub(:now).and_return(time)
+
+    URI.should_receive(:upload).once.
+    with(URI.parse('sftp://example.com/base/com/example/library/2.0-SNAPSHOT/library-2.0-20110311.140236-1.pom'), artifact.pom.to_s, anything)
+    URI.should_receive(:upload).once.
+    with(URI.parse('sftp://example.com/base/com/example/library/2.0-SNAPSHOT/library-2.0-20110311.140236-1.jar'), artifact.to_s, anything)
+    URI.should_receive(:upload).once.
+    with(URI.parse('sftp://example.com/base/com/example/library/2.0-SNAPSHOT/maven_metadata.xml'), "maven_metadata.xml", anything)
+    verbose(false) { artifact.upload(:url=>'sftp://example.com/base') }
+  end
+
   it 'should accept repositories.upload setting' do
     artifact = artifact('com.example:library:jar:2.0')
     # Prevent artifact from downloading anything.

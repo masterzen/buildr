@@ -383,6 +383,12 @@ module Buildr
             trace 'Force update of SNAPSHOT artifacts.'
             options.update_snapshots = true
           }
+        ],
+        ['--unique-version', "Upload timestamp based unique version for SNAPSHOT artifacts",
+          lambda { |value|
+            trace 'Upload SNAPSHOT artifacts with unique (timestamp based) versions.'
+            options.unique_version = true
+          }
         ]
       ]
     end
